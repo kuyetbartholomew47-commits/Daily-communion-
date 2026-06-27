@@ -12,7 +12,7 @@ export default function StreakRing({
 }) {
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
-  const pct = Math.min(1, streak / goal);
+  const pct = goal > 0 ? Math.min(1, streak / goal) : 0;
 
   return (
     <div className="relative w-36 h-36 flex items-center justify-center">

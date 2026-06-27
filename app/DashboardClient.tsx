@@ -37,13 +37,13 @@ export default function DashboardClient({
   favorites: Favorite[];
 }) {
   const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<number | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       // clear any pending copy timeout when unmounting
       if (timeoutRef.current) {
-        window.clearTimeout(timeoutRef.current);
+        clearTimeout(timeoutRef.current);
       }
       // stop any ongoing speech when the component unmounts
       if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -54,32 +54,66 @@ export default function DashboardClient({
 
   async function copyVerse() {
     if (!verse) return;
-    await navigator.clipboard.writeText(`"${verse.text}" — ${verse.reference}`);
-    setCopied(true);
-    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-    // store the id so we can clear on unmount
-    timeoutRef.current = window.setTimeout(() => setCopied(false), 1500) as unknown as number;
+    const text = `"${verse.text}" — ${verse.reference}`;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // fallback: try using an execCommand textarea trick
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      // clipboard may be unavailable or permission denied; degrade gracefully
+      console.warn("Copy to clipboard failed", err);
+    }
   }
 
   async function shareVerse() {
     if (!verse) return;
     const text = `"${verse.text}" — ${verse.reference}`;
-    if (navigator.share) {
-      await navigator.share({ title: "Daily Communion", text });
-    } else {
-      copyVerse();
+    try {
+      if (typeof navigator !== "undefined" && (navigator as any).share) {
+        await (navigator as any).share({ title: "Daily Communion", text });
+      } else {
+        await copyVerse();
+      }
+    } catch (err) {
+      // share might fail or be unsupported; fallback to copy
+      console.warn("Share failed, falling back to copy", err);
+      await copyVerse();
     }
   }
 
   function speakVerse() {
     if (!verse) return;
-    // cancel any existing speech to avoid overlapping audio
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
+    if (typeof window === "undefined") return;
+    if (window.speechSynthesis) {
+      // cancel any existing speech to avoid overlapping audio
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {
+        // ignore
+      }
+      const utter = new SpeechSynthesisUtterance(`${verse.text} — ${verse.reference}`);
+      utter.rate = 0.95;
+      try {
+        window.speechSynthesis.speak(utter);
+      } catch (e) {
+        // ignore speech errors
+        console.warn("speechSynthesis.speak failed", e);
+      }
     }
-    const utter = new SpeechSynthesisUtterance(`${verse.text} — ${verse.reference}`);
-    utter.rate = 0.95;
-    window.speechSynthesis.speak(utter);
   }
 
   const stagger = (i: number) => ({
