@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
 
   async function signInWithEmailPassword(e?: React.FormEvent) {
     e?.preventDefault();
@@ -21,14 +22,33 @@ export default function LoginPage() {
     setMessage(null);
     try {
       const res = await supabase.auth.signInWithPassword({ email, password });
-      if (res.error) {
-        setMessage(res.error.message || "Sign-in failed");
-      } else if (res.data.session) {
-        // logged in
+      if ((res as any).error) {
+        setMessage((res as any).error.message || "Sign-in failed");
+      } else if ((res as any).data?.session) {
         router.push("/");
       } else {
-        // no session (edge cases)
-        setMessage("Sign-in succeeded but no session was returned.");
+        setMessage("Sign-in completed but no session was returned.");
+      }
+    } catch (err: any) {
+      setMessage(err?.message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function signUp(e?: React.FormEvent) {
+    e?.preventDefault();
+    setLoading(true);
+    setMessage(null);
+    try {
+      const res = await supabase.auth.signUp({ email, password });
+      if ((res as any).error) {
+        setMessage((res as any).error.message || "Sign-up failed");
+      } else if ((res as any).data?.user) {
+        // Depending on Supabase settings this may require email confirmation.
+        setMessage("Sign-up successful. Check your email to confirm your account.");
+      } else {
+        setMessage("Sign-up succeeded — check your email for next steps.");
       }
     } catch (err: any) {
       setMessage(err?.message ?? String(err));
@@ -53,6 +73,22 @@ export default function LoginPage() {
     }
   }
 
+  async function sendResetPassword(e?: React.FormEvent) {
+    e?.preventDefault();
+    setLoading(true);
+    setMessage(null);
+    try {
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin}/login`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) setMessage(error.message || "Failed to send reset email");
+      else setMessage("Password reset email sent — check your inbox.");
+    } catch (err: any) {
+      setMessage(err?.message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center">
       <motion.div
@@ -70,7 +106,7 @@ export default function LoginPage() {
           and a streak that keeps you coming back.
         </p>
 
-        <form onSubmit={signInWithEmailPassword} className="w-full max-w-xs">
+        <form onSubmit={mode === "signin" ? signInWithEmailPassword : signUp} className="w-full max-w-xs">
           <label className="sr-only" htmlFor="email">Email</label>
           <input
             id="email"
@@ -88,17 +124,26 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password (or leave blank for magic link)"
+            placeholder={mode === "signin" ? "Password (or leave blank for magic link)" : "Choose a password"}
             className="w-full mb-3 px-3 py-2 rounded-md bg-white/5 text-ink"
           />
 
-          <Button type="submit" fullWidth disabled={loading} className="mb-3">
-            {loading ? "Signing in..." : "Sign in with email"}
-          </Button>
+          <div className="flex gap-2 mb-3">
+            <Button type="submit" fullWidth disabled={loading} className="flex-1">
+              {loading ? (mode === "signin" ? "Signing in..." : "Creating...") : (mode === "signin" ? "Sign in with email" : "Create account")}
+            </Button>
+          </div>
 
-          <Button type="button" fullWidth variant="secondary" onClick={sendMagicLink} disabled={loading}>
-            {loading ? "Sending..." : "Send magic link"}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" fullWidth variant="secondary" onClick={sendMagicLink} disabled={loading}>
+              {loading ? "Sending..." : "Send magic link"}
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between mt-3">
+            <button type="button" className="text-sm text-ink-muted underline" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>{mode === "signin" ? "Create an account" : "Have an account? Sign in"}</button>
+            <button type="button" className="text-sm text-ink-muted underline" onClick={sendResetPassword}>Forgot password?</button>
+          </div>
         </form>
 
         {message && <p className="text-sm text-ink-muted mt-4">{message}</p>}
