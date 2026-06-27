@@ -3,17 +3,54 @@
 import { createClient } from "@/lib/supabase/client";
 import Button from "@/components/ui/Button";
 import { motion } from "framer-motion";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const supabase = createClient();
+  const router = useRouter();
 
-  async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin}/auth/callback`,
-      },
-    });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function signInWithEmailPassword(e?: React.FormEvent) {
+    e?.preventDefault();
+    setLoading(true);
+    setMessage(null);
+    try {
+      const res = await supabase.auth.signInWithPassword({ email, password });
+      if (res.error) {
+        setMessage(res.error.message || "Sign-in failed");
+      } else if (res.data.session) {
+        // logged in
+        router.push("/");
+      } else {
+        // no session (edge cases)
+        setMessage("Sign-in succeeded but no session was returned.");
+      }
+    } catch (err: any) {
+      setMessage(err?.message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendMagicLink(e?: React.FormEvent) {
+    e?.preventDefault();
+    setLoading(true);
+    setMessage(null);
+    try {
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin}/`;
+      const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+      if (error) setMessage(error.message || "Failed to send magic link");
+      else setMessage("Magic link sent — check your email.");
+    } catch (err: any) {
+      setMessage(err?.message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -28,24 +65,46 @@ export default function LoginPage() {
           <span className="font-display text-3xl text-navy-deep">DC</span>
         </div>
         <h1 className="font-display text-3xl text-ink mb-2">Daily Communion</h1>
-        <p className="text-ink-soft text-sm max-w-xs mb-10">
+        <p className="text-ink-soft text-sm max-w-xs mb-6">
           A quiet place to meet with God every day — reading, memory, prayer,
           and a streak that keeps you coming back.
         </p>
 
-        <Button fullWidth onClick={signInWithGoogle} className="max-w-xs">
-          <svg width="18" height="18" viewBox="0 0 48 48">
-            <path
-              fill="#1a1a1a"
-              d="M44.5 20H24v8.5h11.8C34.6 33.9 30 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.3 0 6.3 1.2 8.6 3.2l6-6C38.1 4.1 31.4 1 24 1 11.3 1 1 11.3 1 24s10.3 23 23 23c11.9 0 22-8.6 22-23 0-1.4-.2-2.7-.5-4z"
-            />
-          </svg>
-          Continue with Google
-        </Button>
+        <form onSubmit={signInWithEmailPassword} className="w-full max-w-xs">
+          <label className="sr-only" htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="w-full mb-3 px-3 py-2 rounded-md bg-white/5 text-ink"
+          />
+
+          <label className="sr-only" htmlFor="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password (or leave blank for magic link)"
+            className="w-full mb-3 px-3 py-2 rounded-md bg-white/5 text-ink"
+          />
+
+          <Button type="submit" fullWidth disabled={loading} className="mb-3">
+            {loading ? "Signing in..." : "Sign in with email"}
+          </Button>
+
+          <Button type="button" fullWidth variant="secondary" onClick={sendMagicLink} disabled={loading}>
+            {loading ? "Sending..." : "Send magic link"}
+          </Button>
+        </form>
+
+        {message && <p className="text-sm text-ink-muted mt-4">{message}</p>}
 
         <p className="text-[11px] text-ink-muted mt-8 max-w-xs">
-          By continuing you agree this is a personal devotional space —
-          your prayers and notes are private to you.
+          By continuing you agree this is a personal devotional space — your prayers and notes are private to you.
         </p>
       </motion.div>
     </div>
