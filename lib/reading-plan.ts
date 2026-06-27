@@ -54,16 +54,30 @@ function buildPlan(): ReadingDay[] {
     take = Math.min(take, remainingChapters);
 
     const slice = flat.slice(cursor, cursor + take);
-    const books = Array.from(new Set(slice.map((s) => s.book)));
-    const reference =
-      books.length === 1
-        ? `${books[0]} ${slice[0].chapter}${slice.length > 1 ? `-${slice[slice.length - 1].chapter}` : ""}`
-        : books
-            .map((b) => {
-              const chs = slice.filter((s) => s.book === b).map((s) => s.chapter);
-              return chs.length > 1 ? `${b} ${chs[0]}-${chs[chs.length - 1]}` : `${b} ${chs[0]}`;
-            })
-            .join(", ");
+
+    // build compact book ranges for the slice in a single pass (avoid repeated filters)
+    const ranges: { book: string; start: number; end: number }[] = [];
+    if (slice.length > 0) {
+      let curBook = slice[0].book;
+      let startChap = slice[0].chapter;
+      let endChap = startChap;
+      for (let i = 1; i < slice.length; i++) {
+        const s = slice[i];
+        if (s.book === curBook) {
+          endChap = s.chapter;
+        } else {
+          ranges.push({ book: curBook, start: startChap, end: endChap });
+          curBook = s.book;
+          startChap = s.chapter;
+          endChap = s.chapter;
+        }
+      }
+      ranges.push({ book: curBook, start: startChap, end: endChap });
+    }
+
+    const reference = ranges.length === 1
+      ? `${ranges[0].book} ${ranges[0].start}${ranges[0].end > ranges[0].start ? `-${ranges[0].end}` : ""}`
+      : ranges.map(r => (r.end > r.start ? `${r.book} ${r.start}-${r.end}` : `${r.book} ${r.start}`)).join(", ");
 
     plan.push({ day, reference, passages: slice });
     cursor += take;
@@ -74,12 +88,14 @@ function buildPlan(): ReadingDay[] {
 }
 
 export const READING_PLAN: ReadingDay[] = buildPlan();
+const READING_PLAN_BY_DAY = new Map<number, ReadingDay>(READING_PLAN.map((d) => [d.day, d]));
 
 export function getReadingDay(day: number): ReadingDay | undefined {
-  return READING_PLAN.find((d) => d.day === day);
+  return READING_PLAN_BY_DAY.get(day);
 }
 
 export function planProgressPercent(completedDays: number[]): number {
   if (READING_PLAN.length === 0) return 0;
-  return Math.round((completedDays.length / READING_PLAN.length) * 100);
+  const unique = new Set(completedDays);
+  return Math.round((unique.size / READING_PLAN.length) * 100);
 }

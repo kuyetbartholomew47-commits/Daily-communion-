@@ -7,7 +7,7 @@ import GlassCard from "@/components/GlassCard";
 import StreakRing from "@/components/StreakRing";
 import ProgressBar from "@/components/ProgressBar";
 import type { BibleVerse, Favorite, ReadingDay } from "@/lib/types";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 function greeting() {
   const h = new Date().getHours();
@@ -37,12 +37,28 @@ export default function DashboardClient({
   favorites: Favorite[];
 }) {
   const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      // clear any pending copy timeout when unmounting
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+      // stop any ongoing speech when the component unmounts
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   async function copyVerse() {
     if (!verse) return;
     await navigator.clipboard.writeText(`"${verse.text}" — ${verse.reference}`);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    // store the id so we can clear on unmount
+    timeoutRef.current = window.setTimeout(() => setCopied(false), 1500) as unknown as number;
   }
 
   async function shareVerse() {
@@ -57,6 +73,10 @@ export default function DashboardClient({
 
   function speakVerse() {
     if (!verse) return;
+    // cancel any existing speech to avoid overlapping audio
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     const utter = new SpeechSynthesisUtterance(`${verse.text} — ${verse.reference}`);
     utter.rate = 0.95;
     window.speechSynthesis.speak(utter);
@@ -67,6 +87,8 @@ export default function DashboardClient({
     animate: { opacity: 1, y: 0 },
     transition: { delay: 0.05 * i, duration: 0.45, ease: "easeOut" as const },
   });
+
+  const weeklyPercent = weeklyGoal > 0 ? (Math.min(streak, weeklyGoal) / weeklyGoal) * 100 : 0;
 
   return (
     <div className="px-5 pt-8 space-y-5">
@@ -122,7 +144,7 @@ export default function DashboardClient({
             <p className="font-display text-2xl text-ink mt-1">{Math.min(streak, weeklyGoal)}/{weeklyGoal}</p>
             <p className="text-xs text-ink-muted">days this week</p>
           </div>
-          <ProgressBar percent={(Math.min(streak, weeklyGoal) / weeklyGoal) * 100} />
+          <ProgressBar percent={weeklyPercent} />
         </GlassCard>
       </motion.div>
 
